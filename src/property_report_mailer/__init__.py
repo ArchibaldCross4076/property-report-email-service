@@ -1,0 +1,2 @@
+"""Property report email service."""
+
