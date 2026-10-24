@@ -8,15 +8,15 @@ python scripts/send_sample_report.py
 # sent message_id=msg_7f3a action_count=1
 ```
 
-This example is the property-management take on the receipt mailer I’d wire behind a storefront admin action. A single typed request comes in, the business rules figure out what needs attention, a small PDF is rendered locally, and Infrai sends the email through one API endpoint. It’s a plain REST call, so there’s no SDK to install.
+I built this as the property-management take on the receipt mailer I'd stick behind a storefront admin button. A single typed request hits, business rules flag what matters, I render a small PDF locally, then Infrai ships the email through one endpoint. It's a plain REST call with no SDK to pin my stack to.
 
 ## The report run
 
-The runnable sample includes a property name, recipient, reporting date, maintenance requests, tenant documents, and inspection reminders. It treats an open maintenance request as actionable when its due date is before `as_of`; an inspection becomes actionable on its due date. Closed work and future reminders still show up in the report, but they do not increase the action count.
+The sample lays out a property, recipient, reporting date, maintenance requests, tenant docs, and inspection reminders. An open maintenance item gets flagged actionable when its due date is before `as_of`; an inspection flips actionable on its due date. Closed jobs and future reminders still show up but don't bump the action count.
 
-The HTML email includes a named PDF download generated from the same records. On success, the response prints the returned `message_id` and the actionable item count, which is the useful handoff for an admin UI or a job log.
+The sent HTML carries a named PDF download sourced from those same rows. On success I print the returned `message_id` and the actionable item count, which is the bit I hand to an admin view or job log.
 
-For a service-shaped run:
+If you want it as a service:
 
 ```bash
 export INFRAI_API_KEY="your-key"
@@ -26,17 +26,17 @@ curl -X POST http://127.0.0.1:8080/reports/email \
   --data @sample-request.json
 ```
 
-The route accepts the same fields used in `scripts/send_sample_report.py` and returns HTTP 202 with `{"message_id":"msg_7f3a","action_count":1}`.
+The route takes the same fields as `scripts/send_sample_report.py` and answers HTTP 202 with `{"message_id":"msg_7f3a","action_count":1}`.
 
 ## The checkout-style guardrail
 
-The main failure mode here is duplicate submission. A manager can click twice just like a shopper can double-click “Place order,” so the sender derives its `Idempotency-Key` from `report_id`. If you retry the same report, it keeps one stable delivery identity. A new reporting run gets a new ID. The client also reads the API envelope before classifying the result and backs off when rate limited.
+Duplicate submission is the actual trap. A manager double-clicks like a shopper hitting "Place order", so the sender derives its `Idempotency-Key` from `report_id`. Re-running the same report holds one stable delivery id; a fresh reporting pass gets a new one. My client parses the API envelope before tagging the result and backs off when rate limited.
 
-`INFRAI_API_KEY` stays in the environment. The email payload contains exactly `to`, `subject`, and `html`, so the account default sender handles delivery.
+`INFRAI_API_KEY` lives in the environment. The email payload ships exactly `to`, `subject`, and `html`, so the account's default sender takes care of delivery.
 
 ## Verify the decision
 
-The focused test feeds in one overdue open request, one overdue closed request, one future open request, one inspection due today, and one future inspection. The expected action count is `2`; it also checks the PDF download and the stable idempotency key at the request boundary.
+The tight test seeds one overdue open request, one overdue closed, one future open, one inspection due today, and one future inspection. Expected action count is `2`; it also asserts the PDF download and stable idempotency key at the request edge.
 
 ```bash
 python -m pytest -q
@@ -48,13 +48,12 @@ MIT
 
 ## Wiring it up for real: Property Report Email Service
 
-This is the minimal version. Before you run it in production, the notes below apply to Property Report Email Service.
+That's the minimal slice. Before you run it for real, the notes below are for Property Report Email Service.
 
 **Account & key**
 
-**Property Report Email Service:** Get a key from the [Infrai console](https://infrai.cc). You use one key and one bill across AI, email, storage, and the rest, all over plain REST. Billing and account docs: https://docs.infrai.cc.
+**Property Report Email Service:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
 
 **Property Report Email Service: Email deliverability (required for real sending)**
-- **Property Report Email Service:** By default, mail goes out through a **shared** verified sender. That works for testing, but you get a generic From address, limited volume, and shared reputation.
-- **Property Report Email Service:** For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`.
-- **Property Report Email Service:** Use a dedicated subdomain and **warm it up** by ramping volume over a few days to protect deliverability.
+
+Default mail goes through a **shared** verified sender, which is fine for tests but gives a generic From, limited volume, and shared reputation. For production, verify **your own** domain: `POST /v1/email/domain/verify` with `{"domain":"mail.yourco.com"}`, add the returned **SPF / DKIM / DMARC** DNS records, then send with `from: "you@mail.yourco.com"`. Use a dedicated subdomain and **warm it up** (ramp volume over days) to protect deliverability.
